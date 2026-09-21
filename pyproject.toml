@@ -1,0 +1,62 @@
+[project]
+name = "faaspack"
+version = "0.1.0"
+description = "Build optimized Python deployment packages for AWS Lambda and Scaleway Serverless Functions from a uv project."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Hector Basset", email = "hector.basset.dev@gmail.com" }]
+keywords = ["aws-lambda", "lambda-layer", "scaleway", "serverless", "uv", "packaging", "cold-start"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Build Tools",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.scripts]
+faaspack = "faaspack.cli:main"
+
+[project.entry-points."faaspack.targets"]
+lambda = "faaspack.targets.aws_lambda:LambdaTarget"
+scaleway-functions = "faaspack.targets.scaleway:ScalewayFunctionsTarget"
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.15",
+    "pytest>=8.3",
+    "ruff>=0.12",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "PT", "C4", "PTH", "RET", "PL"]
+ignore = ["PLR0911", "PLR0913", "PLR2004", "PLR0912", "PLR0915", "PLC0415"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004", "S101"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+files = ["src", "tests"]
+exclude = ["tests/fixtures/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: needs the uv binary and network access to PyPI",
+    "docker: needs a running Docker daemon and the official runtime images",
+]
+addopts = "-ra"
