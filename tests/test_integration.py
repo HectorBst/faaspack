@@ -90,3 +90,17 @@ def test_ignore_imports_and_code_paths(sample_app: Path) -> None:
     with zipfile.ZipFile(build.artifacts[0].archive.path) as archive:
         # copied sources: no dist-info for the project itself
         assert not any(n.startswith("sample_app-") for n in archive.namelist())
+
+
+def test_exclude_packages_removes_them_from_the_bundle(sample_app: Path) -> None:
+    result = bundle(
+        sample_app,
+        "lambda",
+        {"output_dir": "out", "architectures": ("x86_64",), "exclude_packages": ("certifi",)},
+    )
+    (build,) = result.builds
+    with zipfile.ZipFile(build.artifacts[0].archive.path) as archive:
+        names = archive.namelist()
+        assert not any(n.startswith("certifi") for n in names)
+        assert any(n.startswith("httpx/") for n in names)
+    assert "certifi" not in {d.name for d in build.distributions}
