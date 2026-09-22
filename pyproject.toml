@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Build optimized Python deployment packages for AWS Lambda and Scaleway Serverless Functions from a uv project."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Hector Basset", email = "hector.basset.dev@gmail.com" }]
 keywords = ["aws-lambda", "lambda-layer", "scaleway", "serverless", "uv", "packaging", "cold-start"]
 classifiers = [

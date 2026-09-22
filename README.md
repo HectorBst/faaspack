@@ -181,3 +181,7 @@ uv run pytest                        # + intégration (uv, PyPI) et Docker si di
 ```
 
 Les tests marqués `integration` construisent le projet d'exemple `tests/fixtures/sample_app` pour les deux cibles ; ceux marqués `docker` lancent `verify` et invoquent la fonction via l'émulateur Lambda (RIE). Ils sont ignorés automatiquement si uv ou Docker manquent (`FAASPACK_SKIP_INTEGRATION=1` pour forcer).
+
+## Licence
+
+MIT, voir [`LICENSE`](LICENSE).
