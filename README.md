@@ -233,6 +233,9 @@ The reasoning behind these choices is in [`docs/design.md`](docs/design.md).
 
 ## Known limitations
 
+- Not yet validated on real accounts: the artifacts were verified in the official runtime
+  images and the Lambda runtime interface emulator only, and no function has been deployed on
+  a real AWS or Scaleway account yet ([#11](https://github.com/HectorBst/faaspack/issues/11)).
 - A dependency published only as an sdist with native code fails (`only-binary = true`);
   building it in a container of the target is not automated yet.
 - Private indexes: faaspack runs uv from the project root, so `[tool.uv]` settings and the
