@@ -71,8 +71,16 @@ class Pruner:
         rel = path.relative_to(root).as_posix()
         return any(fnmatch.fnmatch(rel, pattern) for pattern in self.keep)
 
+    def _keeps_something_inside(self, root: Path, directory: Path) -> bool:
+        return bool(self.keep) and any(self._kept(root, p) for p in directory.rglob("*"))
+
     def _remove(self, root: Path, path: Path, rule: str, report: PruneReport) -> None:
+        """Remove ``path`` unless a keep pattern matches it or something inside it."""
         if self._kept(root, path):
+            return
+        if path.is_dir() and not path.is_symlink() and self._keeps_something_inside(root, path):
+            for child in sorted(path.iterdir()):
+                self._remove(root, child, rule, report)
             return
         size, count = tree_size(path)
         if path.is_dir() and not path.is_symlink():

@@ -115,7 +115,7 @@ ignore-imports = ["boto3"]
 | `prune-tests` | `true` | removes `tests/` and `test/` directories; never `testing/` |
 | `prune-scripts` | `true` | removes `bin/` (scripts whose shebang points to the build interpreter) |
 | `prune-suffixes` | `.pyi .c .h .pyx .pxd .pxi` | removed file extensions |
-| `keep` | `[]` | glob patterns (relative to the installed root) never removed, e.g. `"numpy/_core/include/*"` |
+| `keep` | `[]` | glob patterns (relative to the installed root) never removed, even inside a removed directory such as `tests/` or `bin/`, e.g. `"numpy/_core/include/*"` |
 | `strip` | `false` | `debug` or `unneeded` |
 | `strip-vendored-libs` | `false` | also strips the `*.libs/` directories repaired by auditwheel (known ELF corruption risk) |
 | `strip-tool` | auto | `strip` on a Linux host of the same architecture, else `aarch64-linux-gnu-strip`/`x86_64-linux-gnu-strip` or `llvm-strip` (cross builds, macOS) |
