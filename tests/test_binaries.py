@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -48,6 +49,58 @@ def test_wrong_architecture_and_libc_are_errors(tmp_path: Path) -> None:
     fake_elf(tmp_path / "pkg/_musl.cpython-314-aarch64-linux-musl.so", 183)
     codes = sorted(f.code for f in check_binaries(tmp_path, architecture="arm64", libc="gnu"))
     assert codes == ["FP101", "FP102"]
+
+
+@pytest.mark.parametrize(
+    ("magic", "kind"),
+    [
+        (b"\xcf\xfa\xed\xfe", "Mach-O (macOS)"),
+        (b"\xca\xfe\xba\xbe", "Mach-O universal (macOS)"),
+        (b"MZ\x90\x00", "PE (Windows)"),
+    ],
+)
+def test_binaries_for_another_os_are_errors(tmp_path: Path, magic: bytes, kind: str) -> None:
+    for name in ("_speedups.cpython-314-darwin.so", "libfoo.dylib", "_win.pyd"):
+        (tmp_path / "pkg").mkdir(exist_ok=True)
+        (tmp_path / "pkg" / name).write_bytes(magic + bytes(60))
+    findings = check_binaries(tmp_path, architecture="x86_64", libc="gnu")
+    assert [f.code for f in findings] == ["FP101"] * 3
+    message = findings[0].message
+    assert message.startswith(f"pkg/_speedups.cpython-314-darwin.so: {kind} binary")
+    assert message.endswith("the runtime loads Linux ELF files only")
+
+
+def test_other_files_named_like_libraries_are_ignored(tmp_path: Path) -> None:
+    (tmp_path / "libc.so").write_text("/* GNU ld script */\nGROUP ( libc.so.6 )\n")
+    assert check_binaries(tmp_path, architecture="x86_64", libc="gnu") == []
+
+
+def test_native_strip_is_only_used_on_linux(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda name: f"/usr/bin/{name}" if name in {"strip", "llvm-strip"} else None,
+    )
+    monkeypatch.setattr("faaspack.binaries.host_architecture", lambda: "arm64")
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert find_strip_tool("arm64") == "/usr/bin/strip"
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert find_strip_tool("arm64") == "/usr/bin/llvm-strip"
+
+
+def test_vendored_libraries_are_recognised_inside_the_tree_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "build.libs" / "deps"  # a parent of the tree ends with .libs
+    fake_elf(root / "pkg/_ext.so", 62)
+    fake_elf(root / "pkg.libs/libvendored.so", 62)
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        "faaspack.binaries.subprocess.run",
+        lambda args, **_: subprocess.CompletedProcess(args, 0, "", ""),
+    )
+    report = strip_binaries(root, architecture="x86_64", mode="debug", tool="strip")
+    assert report.stripped == 1  # pkg/_ext.so, not the vendored library
 
 
 def test_missing_cross_strip_tool(monkeypatch: pytest.MonkeyPatch) -> None:
