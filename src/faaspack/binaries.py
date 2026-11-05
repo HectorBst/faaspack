@@ -14,6 +14,9 @@ from faaspack.errors import FaaspackError, Finding, Level
 
 # ELF e_machine values
 ELF_MACHINES = {"x86_64": 62, "arm64": 183}
+_ELF_MAGIC = b"\x7fELF"
+_ELF_DATA_LITTLE_ENDIAN = 1  # EI_DATA byte of e_ident
+_ELF_MACHINE_OFFSET = 18  # after e_ident (16 bytes) and e_type (2 bytes)
 _EXT_LIBC = re.compile(r"-linux-(gnu|musl)[a-z]*\.so$")
 
 
@@ -29,13 +32,13 @@ def iter_shared_objects(root: Path) -> Iterator[Path]:
 
 def elf_machine(path: Path) -> int | None:
     """Return e_machine of an ELF file, or None if the file is not ELF."""
+    end = _ELF_MACHINE_OFFSET + 2
     with path.open("rb") as handle:
-        header = handle.read(20)
-    if len(header) < 20 or header[:4] != b"\x7fELF":
+        header = handle.read(end)
+    if len(header) < end or not header.startswith(_ELF_MAGIC):
         return None
-    if header[5] == 1:
-        return int.from_bytes(header[18:20], "little")
-    return int.from_bytes(header[18:20], "big")
+    little_endian = header[5] == _ELF_DATA_LITTLE_ENDIAN
+    return int.from_bytes(header[_ELF_MACHINE_OFFSET:end], "little" if little_endian else "big")
 
 
 def check_binaries(root: Path, *, architecture: str, libc: str) -> list[Finding]:

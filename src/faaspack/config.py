@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import tomllib
+import zlib
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -149,7 +150,7 @@ def _coerce(key: str, value: Any) -> Any:
     if name in ("compression_level", "source_date_epoch"):
         if not isinstance(value, int) or isinstance(value, bool):
             raise FaaspackError(f"option {key!r} must be an integer")
-        if name == "compression_level" and not 0 <= value <= 9:
+        if name == "compression_level" and not 0 <= value <= zlib.Z_BEST_COMPRESSION:
             raise FaaspackError("option 'compression-level' must be between 0 and 9")
         return value
     if value is not None and not isinstance(value, str):

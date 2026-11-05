@@ -1,0 +1,52 @@
+[
+  {
+    "path": "src/faaspack/archive.py",
+    "file_name": "archive.py",
+    "functions": [
+      {
+        "name": "_collect",
+        "complexity": 21
+      }
+    ]
+  },
+  {
+    "path": "src/faaspack/config.py",
+    "file_name": "config.py",
+    "functions": [
+      {
+        "name": "_coerce",
+        "complexity": 29
+      }
+    ]
+  },
+  {
+    "path": "src/faaspack/pipeline.py",
+    "file_name": "pipeline.py",
+    "functions": [
+      {
+        "name": "_build_architecture",
+        "complexity": 36
+      }
+    ]
+  },
+  {
+    "path": "src/faaspack/prune.py",
+    "file_name": "prune.py",
+    "functions": [
+      {
+        "name": "Pruner::prune",
+        "complexity": 27
+      }
+    ]
+  },
+  {
+    "path": "src/faaspack/verify.py",
+    "file_name": "verify.py",
+    "functions": [
+      {
+        "name": "verify",
+        "complexity": 35
+      }
+    ]
+  }
+]

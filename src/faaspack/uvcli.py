@@ -8,9 +8,10 @@ platform with ``uv pip install --target``.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from faaspack.errors import FaaspackError
@@ -28,14 +29,17 @@ def locate_uv(explicit: str | None = None) -> str:
 
 
 class Uv:
-    def __init__(self, binary: str | None = None, *, verbose: bool = False) -> None:
+    def __init__(
+        self, binary: str | None = None, *, echo: Callable[[str], None] | None = None
+    ) -> None:
+        """``echo`` receives every uv command line before it runs (``--verbose``)."""
         self.binary = locate_uv(binary)
-        self.verbose = verbose
+        self.echo = echo
 
     def run(self, args: Sequence[str], *, cwd: Path | None = None) -> str:
         cmd = [self.binary, *args]
-        if self.verbose:
-            print("+ uv " + " ".join(args), flush=True)
+        if self.echo is not None:
+            self.echo(f"+ uv {shlex.join(args)}")
         proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
         if proc.returncode != 0:
             tail = "\n".join((proc.stderr or proc.stdout).strip().splitlines()[-15:])

@@ -172,15 +172,7 @@ L'analyse des imports est statique et porte sur le code du projet : les imports 
 
 ## Développement
 
-```
-uv sync
-uv run ruff check . && uv run ruff format --check .
-uv run mypy
-uv run pytest -m "not integration"   # unitaires, hors réseau
-uv run pytest                        # + intégration (uv, PyPI) et Docker si disponible
-```
-
-Les tests marqués `integration` construisent le projet d'exemple `tests/fixtures/sample_app` pour les deux cibles ; ceux marqués `docker` lancent `verify` et invoquent la fonction via l'émulateur Lambda (RIE). Ils sont ignorés automatiquement si uv ou Docker manquent (`FAASPACK_SKIP_INTEGRATION=1` pour forcer).
+Installation, garde-fous qualité (couverture globale de 85 %, 75 % sur le code nouveau, complexité cognitive de 15 au plus) et règles de contribution : voir [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Licence
 

@@ -28,6 +28,8 @@ from faaspack.uvcli import Uv
 
 Log = Callable[[str], None]
 
+_LOCATIONS_SHOWN = 3  # import sites quoted in an FP401/FP402 message
+
 
 def _silent(_: str) -> None:
     return None
@@ -170,7 +172,9 @@ def _import_findings(
     for module, places in sorted(scan_imports([code_dir]).items()):
         if module in known or module in options.ignore_imports:
             continue
-        where = ", ".join(places[:3]) + (" ..." if len(places) > 3 else "")
+        where = ", ".join(places[:_LOCATIONS_SHOWN])
+        if len(places) > _LOCATIONS_SHOWN:
+            where += " ..."
         if module in target.runtime_provided:
             hint = target.runtime_provided[module]
             if hint is not None:

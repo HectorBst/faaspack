@@ -1,0 +1,165 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: "1"
+  UV_VERSION: "0.13.7"
+
+jobs:
+  lint:
+    name: Lint, types and complexity
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run --frozen ruff check --output-format=github .
+      - run: uv run --frozen ruff format --check .
+      - run: uv run --frozen mypy
+      - run: uv run --frozen complexipy --quiet
+
+  unit:
+    name: Unit tests (Python ${{ matrix.python }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+        include:
+          - os: macos-15
+            python: "3.14"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - run: uv sync --locked
+      # The coverage threshold applies to the combined data, in the coverage job.
+      - run: uv run --frozen pytest -m "not integration" --cov --cov-report= --cov-fail-under=0
+        env:
+          COVERAGE_FILE: .coverage.unit-${{ matrix.os }}-py${{ matrix.python }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-unit-${{ matrix.os }}-py${{ matrix.python }}
+          path: .coverage.*
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+
+  integration:
+    # Real uv, PyPI and the official runtime images. Runs against the oldest supported uv
+    # and the current one, because faaspack depends on uv's command line interface.
+    name: Integration and Docker tests (uv ${{ matrix.uv }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        uv: ["0.12.17", "0.13.7"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ matrix.uv }}
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run --frozen pytest -m integration --cov --cov-report= --cov-fail-under=0
+        env:
+          COVERAGE_FILE: .coverage.integration-uv${{ matrix.uv }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-integration-uv${{ matrix.uv }}
+          path: .coverage.*
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+
+  coverage:
+    name: Coverage gate
+    needs: [unit, integration]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # diff-cover compares with the base branch
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --locked
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+      - run: uv run --frozen coverage combine
+      - run: uv run --frozen coverage report --format=markdown --fail-under=0 >> "$GITHUB_STEP_SUMMARY"
+      - name: Global coverage (at least 85 %)
+        run: uv run --frozen coverage report
+      - name: New code coverage (at least 75 % of the lines added by the pull request)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          uv run --frozen coverage xml
+          uv run --frozen diff-cover coverage.xml --compare-branch="origin/${BASE_REF}" \
+            --fail-under=75 --markdown-report=diff-cover.md
+          cat diff-cover.md >> "$GITHUB_STEP_SUMMARY"
+
+  package:
+    name: Build and smoke-test the distributions
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv build
+      - run: uvx twine@7.0.0 check --strict dist/*
+      # Entry points only exist in installed metadata: check that both targets register.
+      - run: |
+          wheel=$(ls dist/*.whl)
+          uvx --from "$wheel" faaspack targets | tee targets.txt
+          grep -q '^lambda ' targets.txt
+          grep -q '^scaleway-functions ' targets.txt
+
+  ci-passed:
+    # The single check to require in branch rules: a skipped job (because a job it needs
+    # failed) would count as passing there, so this one checks every result explicitly.
+    name: CI passed
+    if: always()
+    needs: [lint, unit, integration, coverage, package]
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do [ "$result" = success ] || exit 1; done

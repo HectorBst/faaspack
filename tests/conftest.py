@@ -17,7 +17,7 @@ def _docker_available() -> bool:
     return proc.returncode == 0
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     skip_integration = os.environ.get("FAASPACK_SKIP_INTEGRATION") == "1" or not (
         shutil.which("uv") or os.environ.get("UV")
     )

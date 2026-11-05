@@ -32,8 +32,11 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "complexipy>=8.3",
+    "diff-cover>=11",
     "mypy>=1.15",
     "pytest>=8.3",
+    "pytest-cov>=7",
     "ruff>=0.12",
 ]
 
@@ -43,11 +46,30 @@ target-version = "py311"
 extend-exclude = ["tests/fixtures"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "PT", "C4", "PTH", "RET", "PL"]
-ignore = ["PLR0911", "PLR0913", "PLR2004", "PLR0912", "PLR0915", "PLC0415"]
+select = [
+    "A", "ARG", "B", "BLE", "C4", "DTZ", "E", "ERA", "F", "FBT", "FLY", "FURB", "G", "I",
+    "ISC", "LOG", "N", "PERF", "PGH", "PIE", "PL", "PT", "PTH", "RET", "RSE", "RUF", "S",
+    "SIM", "SLOT", "T20", "TID", "TRY", "UP", "W",
+]
+ignore = [
+    # faaspack drives uv, compileall, strip and docker with argument lists, never a shell
+    # (S602/S604/S605 stay enabled to keep it that way).
+    "S603",
+    # Exception messages are written inline, next to the condition they describe.
+    "TRY003",
+    # Complexity debt, tracked by the complexipy snapshot until the pipeline refactor.
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915",
+]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["PLR2004", "S101"]
+# The command line interface is the only module that writes to the terminal.
+"src/faaspack/cli.py" = ["T201"]
+# Target methods implement a plugin interface: some targets ignore some arguments.
+"src/faaspack/targets/*.py" = ["ARG002"]
+"tests/**" = ["PLC0415", "PLR2004", "S"]
+
+[tool.ruff.lint.pep8-naming]
+extend-ignore-names = ["visit_*"]  # ast.NodeVisitor dispatches on visit_<NodeClass>
 
 [tool.mypy]
 strict = true
@@ -61,4 +83,25 @@ markers = [
     "integration: needs the uv binary and network access to PyPI",
     "docker: needs a running Docker daemon and the official runtime images",
 ]
-addopts = "-ra"
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+xfail_strict = true
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["faaspack"]
+relative_files = true  # lets CI combine data files from Linux and macOS jobs
+
+[tool.coverage.paths]
+source = ["src/faaspack", "*/site-packages/faaspack"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# Whole suite: unit, integration and Docker tests, as combined in CI.
+fail_under = 85
+exclude_also = ["if TYPE_CHECKING:", "@abstractmethod"]
+
+[tool.complexipy]
+paths = ["src"]
+max-complexity-allowed = 15
