@@ -8,20 +8,41 @@ from collections.abc import Iterable
 from pathlib import Path
 
 _IMPORT_ERRORS = {"ImportError", "ModuleNotFoundError", "Exception", "BaseException"}
+# Values that differ between interpreters: a static scan cannot tell which branch runs.
+_INTERPRETER_FACTS = {("sys", "version_info"), ("sys", "platform"), ("os", "name")}
 _NON_MODULE_DIRS = {"__pycache__", "bin"}
+
+
+def _name(node: ast.expr) -> str:
+    """``x`` for ``x`` and for ``a.b.x``, empty for anything else."""
+    return node.attr if isinstance(node, ast.Attribute) else getattr(node, "id", "")
 
 
 def _catches_import_error(handler: ast.ExceptHandler) -> bool:
     if handler.type is None:
         return True
-    names: list[ast.expr] = (
-        list(handler.type.elts) if isinstance(handler.type, ast.Tuple) else [handler.type]
+    types = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+    return any(_name(node) in _IMPORT_ERRORS for node in types)
+
+
+def _suppresses_import_error(item: ast.withitem) -> bool:
+    """``with suppress(ImportError):`` or ``with contextlib.suppress(...)``."""
+    call = item.context_expr
+    return (
+        isinstance(call, ast.Call)
+        and _name(call.func) == "suppress"
+        and any(_name(arg) in _IMPORT_ERRORS for arg in call.args)
     )
-    for node in names:
-        name = node.attr if isinstance(node, ast.Attribute) else getattr(node, "id", "")
-        if name in _IMPORT_ERRORS:
-            return True
-    return False
+
+
+def _depends_on_interpreter(test: ast.expr) -> bool:
+    """``sys.version_info >= (3, 11)``, ``sys.platform == "win32"``, ``os.name == "nt"``..."""
+    return any(
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and (node.value.id, node.attr) in _INTERPRETER_FACTS
+        for node in ast.walk(test)
+    )
 
 
 def _is_type_checking(test: ast.expr) -> bool:
@@ -49,34 +70,37 @@ class _Collector(ast.NodeVisitor):
         if node.level == 0 and node.module:
             self._add(node.module, node)
 
-    def visit_Try(self, node: ast.Try) -> None:
-        guarded = any(_catches_import_error(h) for h in node.handlers)
+    def _visit_all(self, statements: Iterable[ast.AST], *, guarded: bool) -> None:
         self.guarded += guarded
-        for stmt in node.body:
-            self.visit(stmt)
+        for statement in statements:
+            self.visit(statement)
         self.guarded -= guarded
-        for stmt in [*node.orelse, *node.finalbody]:
-            self.visit(stmt)
-        for handler in node.handlers:
-            self.visit(handler)
+
+    def visit_Try(self, node: ast.Try) -> None:
+        self._visit_all(node.body, guarded=any(_catches_import_error(h) for h in node.handlers))
+        self._visit_all([*node.orelse, *node.finalbody, *node.handlers], guarded=False)
 
     visit_TryStar = visit_Try  # type: ignore[assignment]
 
+    def visit_With(self, node: ast.With) -> None:
+        self._visit_all(node.body, guarded=any(_suppresses_import_error(i) for i in node.items))
+
+    visit_AsyncWith = visit_With  # type: ignore[assignment]
+
     def visit_If(self, node: ast.If) -> None:
-        guarded = _is_type_checking(node.test)
-        self.guarded += guarded
-        for stmt in node.body:
-            self.visit(stmt)
-        self.guarded -= guarded
-        for stmt in node.orelse:
-            self.visit(stmt)
+        if _depends_on_interpreter(node.test):
+            self._visit_all([*node.body, *node.orelse], guarded=True)
+            return
+        self._visit_all(node.body, guarded=_is_type_checking(node.test))
+        self._visit_all(node.orelse, guarded=False)
 
 
 def scan_imports(roots: Iterable[Path]) -> dict[str, list[str]]:
     """Map each unconditionally imported top-level module to where it is imported.
 
-    Imports inside ``try/except ImportError`` or ``if TYPE_CHECKING:`` are ignored,
-    as are relative imports.
+    Ignored: imports guarded by ``try/except ImportError``, ``contextlib.suppress(ImportError)``
+    or ``if TYPE_CHECKING:``, imports in either branch of a test on ``sys.version_info``,
+    ``sys.platform`` or ``os.name``, and relative imports.
     """
     found: dict[str, list[str]] = {}
     for root in roots:

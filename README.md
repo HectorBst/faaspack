@@ -183,8 +183,10 @@ another dependency, use `exclude-packages = ["boto3", "botocore", "s3transfer"]`
 `snapshot_restore_py` (SnapStart hooks) and `awslambdaric` are provided by the runtime and are
 never reported.
 
-The import analysis is static and covers the project code: imports guarded by
-`try/except ImportError` or `if TYPE_CHECKING:` and relative imports are ignored.
+The import analysis is static and covers the project code. It ignores imports guarded by
+`try/except ImportError`, `contextlib.suppress(ImportError)` or `if TYPE_CHECKING:`, imports in
+either branch of a test on `sys.version_info`, `sys.platform` or `os.name` (such as `tomli`
+before Python 3.11), and relative imports.
 
 ## Findings
 
