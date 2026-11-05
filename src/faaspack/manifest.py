@@ -9,6 +9,7 @@ from typing import Any
 
 from faaspack import __version__
 from faaspack.config import Options, Project
+from faaspack.errors import FaaspackError
 from faaspack.results import ArchBuild, BundleResult
 
 
@@ -33,6 +34,17 @@ def write_manifest(result: BundleResult, project: Project, options: Options) -> 
         "builds": [_build_entry(build, base) for build in result.builds],
     }
     result.manifest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def load_manifest(path: Path) -> dict[str, Any]:
+    """Read a manifest written by ``bundle``; raise FaaspackError when it is not one."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:  # ValueError covers invalid JSON and encodings
+        raise FaaspackError(f"cannot read manifest {path}: {exc}") from exc
+    if not isinstance(data, dict) or not {"target", "python", "builds"} <= data.keys():
+        raise FaaspackError(f"{path} is not a faaspack manifest")
+    return data
 
 
 def _build_entry(build: ArchBuild, base: Path) -> dict[str, Any]:

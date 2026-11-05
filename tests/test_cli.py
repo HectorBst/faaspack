@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import faaspack.cli
-from faaspack.cli import EXIT_FATAL, EXIT_FINDINGS, EXIT_OK, main
+from faaspack.cli import EXIT_FATAL, EXIT_FINDINGS, EXIT_INTERRUPTED, EXIT_OK, main
 from tests.fakes import FakeRuntime, FakeUv, make_project
 
 HANDLER = "import boto3\n"  # FP402: a warning
@@ -32,6 +32,24 @@ def test_targets_command(capsys: pytest.CaptureFixture[str]) -> None:
 def test_fatal_errors_exit_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["bundle", "lambda", "--project", str(tmp_path)]) == EXIT_FATAL
     assert "no pyproject.toml" in capsys.readouterr().err
+
+
+def test_verify_without_a_manifest_exits_2(
+    tmp_path: Path, offline: FakeRuntime, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["verify", str(tmp_path / "missing.json")]) == EXIT_FATAL
+    assert "error: cannot read manifest" in capsys.readouterr().err
+
+
+def test_interruption_exits_130(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def interrupted() -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(faaspack.cli, "available_targets", interrupted)
+    assert main(["targets"]) == EXIT_INTERRUPTED
+    assert capsys.readouterr().err == "interrupted\n"
 
 
 def test_bundle_requires_lock_and_code(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

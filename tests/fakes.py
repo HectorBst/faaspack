@@ -64,6 +64,7 @@ class FakeUv:
 
     dependencies: Sequence[str] = ("dep",)
     wrong_machine: int | None = None
+    python: Path = Path(sys.executable)
     calls: list[tuple[str, Any]] = field(default_factory=list)
 
     def export_requirements(self, project: Path, output: Path, selection: LockSelection) -> None:
@@ -116,7 +117,7 @@ class FakeUv:
 
     def find_python(self, version: str) -> Path:
         self.calls.append(("find-python", version))
-        return Path(sys.executable)
+        return self.python
 
     def called(self, operation: str) -> list[Any]:
         """Arguments of the calls to ``operation``, in order."""

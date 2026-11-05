@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -67,10 +68,15 @@ def optimize(
 
 
 def _interpreter(python: str, uv: UvCommands | None) -> Path:
-    """``python`` is an interpreter path, or a minor version that uv finds or installs."""
+    """``python`` is an interpreter path, a minor version that uv finds or installs, or a
+    command on PATH (``python3``)."""
     candidate = Path(python)
     if candidate.is_file():
         return candidate
     if re.fullmatch(r"3\.\d+", python):
         return (uv or Uv()).find_python(python)
-    raise FaaspackError(f"--python must be an interpreter path or a version, got {python!r}")
+    if found := shutil.which(python):
+        return Path(found)
+    raise FaaspackError(
+        f"--python must be an interpreter path, a command or a version, got {python!r}"
+    )

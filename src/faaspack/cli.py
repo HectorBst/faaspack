@@ -20,6 +20,7 @@ from faaspack.uvcli import Uv
 from faaspack.verify import Docker, VerifyOptions, verify
 
 EXIT_OK, EXIT_FINDINGS, EXIT_FATAL = 0, 1, 2
+EXIT_INTERRUPTED = 130  # 128 + SIGINT, like shells
 
 
 def _size(n: int) -> str:
@@ -173,7 +174,7 @@ def build_parser() -> argparse.ArgumentParser:
     o.add_argument(
         "--python",
         required=True,
-        help="interpreter that will run the code (path), or a version for uv",
+        help="interpreter that will run the code (path or command), or a version for uv",
     )
     o.add_argument("--strip", choices=["debug", "unneeded"])
     o.add_argument("--strip-tool")
@@ -215,4 +216,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except FaaspackError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_FATAL
+    except KeyboardInterrupt:
+        print("interrupted", file=sys.stderr)
+        return EXIT_INTERRUPTED
     return code

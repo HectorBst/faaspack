@@ -31,7 +31,7 @@ def test_optimize_in_place(tmp_path: Path) -> None:
 
 
 def test_optimize_rejects_bad_python(tmp_path: Path) -> None:
-    with pytest.raises(FaaspackError, match="interpreter path or a version"):
+    with pytest.raises(FaaspackError, match="interpreter path, a command or a version"):
         optimize([tmp_path], python="python-latest", options=Options())
 
 
@@ -40,6 +40,17 @@ def test_optimize_accepts_a_version_found_by_uv(tmp_path: Path) -> None:
     uv = FakeUv()
     optimize([tmp_path], python=PYTHON, options=Options(), uv=uv)
     assert uv.called("find-python") == [PYTHON]
+
+
+def test_optimize_accepts_a_command_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "m.py").write_text("x = 1\n")
+    interpreter = Path(sys.executable)
+    monkeypatch.setenv("PATH", str(interpreter.parent))
+    result = optimize([tmp_path], python=interpreter.name, options=Options())
+    assert result.compile_failures == []
+    assert list((tmp_path / "__pycache__").iterdir())
 
 
 def test_optimize_rejects_missing_directories(tmp_path: Path) -> None:

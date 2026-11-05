@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from importlib.metadata import entry_points
+from importlib.metadata import EntryPoint, entry_points
 
 from faaspack.errors import FaaspackError
 from faaspack.targets.aws_lambda import LambdaTarget
@@ -13,18 +13,26 @@ GROUP = "faaspack.targets"
 
 
 def available_targets() -> dict[str, type[Target]]:
-    targets: dict[str, type[Target]] = {}
-    for entry in entry_points(group=GROUP):
-        loaded = entry.load()
-        if not (isinstance(loaded, type) and issubclass(loaded, Target)):
-            raise FaaspackError(f"entry point {entry.name!r} is not a faaspack Target")
-        targets[entry.name] = loaded
+    """Targets registered in the ``faaspack.targets`` entry point group, by name."""
+    targets = {entry.name: _load(entry) for entry in entry_points(group=GROUP)}
     if not targets:  # running from a source tree without installed metadata
         targets = {
             LambdaTarget.name: LambdaTarget,
             ScalewayFunctionsTarget.name: ScalewayFunctionsTarget,
         }
     return targets
+
+
+def _load(entry: EntryPoint) -> type[Target]:
+    try:
+        loaded = entry.load()
+    except Exception as exc:  # a third-party plugin can fail in any way while importing
+        raise FaaspackError(
+            f"target {entry.name!r} ({entry.value}) cannot be loaded: {exc}"
+        ) from exc
+    if not (isinstance(loaded, type) and issubclass(loaded, Target)):
+        raise FaaspackError(f"entry point {entry.name!r} is not a faaspack Target")
+    return loaded
 
 
 def get_target(name: str) -> Target:
