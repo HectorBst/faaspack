@@ -1,0 +1,21 @@
+name: Feature request
+description: A new target, option or check.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to package or check, and why faaspack does not help today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The behavior you would like, with a configuration or command example if possible.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Platform facts
+      description: Links to the platform documentation or measurements the change relies on.
