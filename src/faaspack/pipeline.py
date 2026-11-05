@@ -257,11 +257,18 @@ def _compile(
     failures: list[str] = []
     for spec in plan:
         for stage, prefix in spec.parts:
-            runtime = spec.runtime_root + prefix if spec.runtime_root is not None else None
             failures += compile_tree(
-                context.python_path, stages[stage], runtime_path=runtime
+                context.python_path, stages[stage], runtime_path=_runtime_path(spec, prefix)
             ).failures
     return failures
+
+
+def _runtime_path(spec: ArtifactSpec, prefix: str) -> str | None:
+    """Where a stage lives at runtime, recorded as co_filename: absolute when the platform
+    documents its extraction root, relative to the archive root otherwise (Scaleway)."""
+    if spec.runtime_root is None:
+        return prefix or None
+    return spec.runtime_root + prefix
 
 
 def _compile_findings(failures: Sequence[str], python: str) -> list[Finding]:

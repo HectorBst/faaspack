@@ -20,7 +20,7 @@ from faaspack.errors import FaaspackError
 
 @dataclass
 class CompileReport:
-    failures: list[str] = field(default_factory=list)
+    failures: list[str] = field(default_factory=list)  # relative to the compiled directory
 
 
 def compile_tree(
@@ -61,5 +61,14 @@ def compile_tree(
         # cannot be compiled and are simply left as sources.
         for line in proc.stdout.splitlines():
             if line.startswith("*** Error compiling"):
-                report.failures.append(line.removeprefix("*** Error compiling ").strip(" '."))
+                path = Path(line.removeprefix("*** Error compiling ").strip(" '."))
+                report.failures.append(_relative(path, directory))
     return report
+
+
+def _relative(path: Path, directory: Path) -> str:
+    """``path`` relative to ``directory``, so that reports do not depend on temporary paths."""
+    try:
+        return path.relative_to(directory).as_posix()
+    except ValueError:
+        return path.as_posix()
