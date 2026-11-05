@@ -49,7 +49,7 @@ jobs:
 
   dependency-review:
     name: Dependency review
-    # Needs GitHub Advanced Security on private repositories; free on public ones.
+    # Free on public repositories; private ones need GitHub Code Security or Advanced Security.
     if: github.event_name == 'pull_request' && !github.event.repository.private
     runs-on: ubuntu-24.04
     steps:

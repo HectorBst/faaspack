@@ -14,6 +14,8 @@ constraints are the file layout and binary compatibility.
   dependencies sit at the root of the function zip; layer content goes under `python/`. Quotas:
   50 MB zipped for a direct upload, 250 MB unzipped for the function and its layers together, 5
   layers per function ([quotas](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html)).
+  AWS states that its MB are MiB (1,024 KB), so these limits are 52,428,800 and 262,144,000
+  bytes, the values faaspack checks.
 - **Layer loading**: `/var/runtime/bootstrap.py` puts `/var/task`, then
   `/opt/python/lib/python3.X/site-packages`, then `/opt/python` at the front of `sys.path`, runs
   `site.addsitedir()` on them (so `.pth` files work), and adds the layer paths only when
@@ -75,6 +77,31 @@ No tool combined `uv.lock`, the three Lambda layouts, arm64, valid bytecode and 
 If uv ships a native bundle, or if SAM and the Serverless Framework fix their bytecode,
 faaspack's own value shrinks to its optimizations and to Scaleway. faaspack therefore stays a
 thin layer over uv.
+
+### Update 2026-11-05
+
+- **Serverless Framework fixed its bytecode** in
+  [4.43.0](https://github.com/serverless/serverless/releases/tag/sf-core%404.43.0)
+  (2026-09-24, [serverless#13888](https://github.com/serverless/serverless/pull/13888)): pip
+  installs run with `SOURCE_DATE_EPOCH`, so dependencies get `checked-hash` `.pyc` files that
+  survive the zip. The interpreter still reads and hashes each source at import, the project
+  code is not covered, `slim` still deletes `.pyc` files, and the uv path ships no bytecode
+  (according to the pull request, not measured there).
+- **AWS SAM**: aws-lambda-builders#924 and its fix
+  ([aws-lambda-builders#926](https://github.com/aws/aws-lambda-builders/pull/926)) are still
+  open; the [`python-uv` build method](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/building-python-uv.html)
+  is still a preview and its documentation mentions neither `uv.lock` nor bytecode.
+- **uv**: astral-sh/uv#9350 is still open; uv 0.13.7 still writes timestamp-based `.pyc` files,
+  and `checked-hash` ones with `SOURCE_DATE_EPOCH`, never `unchecked-hash` (checked by running
+  it).
+- **A related tool appeared**: [aws_lbd_art_builder_uv](https://aws-lbd-art-builder-uv.readthedocs.io/en/stable/)
+  1.0.0 (2026-10-16) builds the `python/` folder of a Lambda layer from `uv.lock`, on the host
+  or in an AWS SAM build image (useful prior art for building native sdists in a container). It
+  builds layers only, has no Scaleway target, and its documentation says nothing about bytecode.
+
+faaspack's distinct value is therefore, as of this date: `unchecked-hash` bytecode for
+dependencies and code, the function, layer and split layouts from one `uv.lock`, the binary,
+quota and import checks, `verify`, and Scaleway.
 
 ## One package, targets as plugins
 
