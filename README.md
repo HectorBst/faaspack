@@ -23,7 +23,7 @@ Docker for `faaspack verify` only. faaspack itself has no runtime dependency.
 
 | Problem | What faaspack does |
 |---|---|
-| Timestamp-based `.pyc` files are rejected once a zip tool rewrites modification times (to 1980 or 2098), and `/var/task` is read-only, so Lambda recompiles at every cold start (aws-lambda-builders#924, serverless#13889). `uv pip install --compile-bytecode` writes this kind of `.pyc`. | Compiles everything (dependencies and code) in `unchecked-hash` mode (PEP 552) with a Python of the target version. On the sample project, the Lambda emulator `INIT REPORT` drops from 501 ms to 289 ms (median of 5 runs, local machine, unthrottled CPU). |
+| Timestamp-based `.pyc` files are rejected once a zip tool rewrites modification times (to 1980 or 2098), and `/var/task` is read-only, so Lambda recompiles at every cold start. As of 2026-11-05, AWS SAM still ships them (aws-lambda-builders#924), and `uv pip install --compile-bytecode` writes them; Serverless Framework 4.43.0 switched its pip installs to `checked-hash` `.pyc`, which stay valid but make the interpreter read and hash every source file at import. | Compiles everything (dependencies and code) in `unchecked-hash` mode (PEP 552) with a Python of the target version: no timestamp check and no source hashing at import (the gain over `checked-hash` has not been measured). On the sample project, the Lambda emulator `INIT REPORT` drops from 501 ms to 289 ms (median of 5 runs, local machine, unthrottled CPU). |
 | Wheels must match the runtime, not the build machine. | Lambda python3.12+: `manylinux_2_34` (Amazon Linux 2023, glibc 2.34), x86_64 or arm64. Scaleway: `musllinux` x86_64 (Alpine runtimes), where manylinux wheels do not import. |
 | Useless files make archives heavier. | Conservative pruning (see below), optional `strip`, report of the largest contributors. |
 | Archives change at every build. | Deterministic zips: sorted entries, fixed date, 644/755 permissions, relocated `co_filename`. Two builds of the same inputs on the same machine produce the same sha256. |
@@ -139,8 +139,8 @@ ignore-imports = ["boto3"]
 The runtime puts `/var/task` before `/opt/python/lib/pythonX.Y/site-packages` and `/opt/python`,
 **and adds the layer paths only when `PYTHONPATH` is not set on the function**
 (`/var/runtime/bootstrap.py`). A layer with native code only works for the architecture it was
-built for. Checked quotas: 50 MB zipped for a direct upload (warning: upload through Amazon
-S3), 250 MB unzipped for the function and its layers together (error), and a hint from about
+built for. Checked quotas, where AWS's MB are MiB: 50 MB zipped for a direct upload (warning:
+upload through Amazon S3), 250 MB unzipped for the function and its layers together (error), and a hint from about
 200 MB that a container image may start faster (a single public benchmark, measure it on your
 case). python3.11 and older (Amazon Linux 2) use `manylinux2014`; this path is not tested.
 
