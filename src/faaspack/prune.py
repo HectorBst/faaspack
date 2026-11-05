@@ -86,38 +86,46 @@ class Pruner:
         report = PruneReport()
         if not root.is_dir():
             return report
+        self._prune_bytecode(root, report)
+        self._prune_uv_lock_file(root, report)
+        if self.prune_scripts:
+            self._prune_scripts(root, report)
+        if self.trim_dist_info:
+            self._trim_dist_info(root, report)
+        if self.prune_tests:
+            self._prune_tests(root, report)
+        if self.suffixes:
+            self._prune_suffixes(root, report)
+        return report
+
+    def _prune_bytecode(self, root: Path, report: PruneReport) -> None:
         # Stale bytecode from wheels or earlier runs; recompiled later with unchecked-hash.
         for cache in sorted(root.rglob("__pycache__"), reverse=True):
             if cache.is_dir():
                 self._remove(root, cache, "pycache", report)
-        # Lock file written by `uv pip install --target` at the root of the target.
+
+    def _prune_uv_lock_file(self, root: Path, report: PruneReport) -> None:
+        # `uv pip install --target` leaves an empty `.lock` file at the root of the target.
         uv_lock = root / ".lock"
         if uv_lock.is_file() and uv_lock.stat().st_size == 0:
             self._remove(root, uv_lock, "installer", report)
-        if self.prune_scripts:
-            # Console scripts written by `uv pip install --target`: their shebang points to
-            # the build machine interpreter, so they cannot run on the target anyway.
-            scripts = root / "bin"
-            if scripts.is_dir():
-                self._remove(root, scripts, "scripts", report)
-        if self.trim_dist_info:
-            for dist_info in root.glob("*.dist-info"):
-                for name in DIST_INFO_BOOKKEEPING:
-                    candidate = dist_info / name
-                    if candidate.is_file():
-                        self._remove(root, candidate, "dist-info", report)
-        if self.prune_tests:
-            self._prune_tests(root, report)
-        if self.suffixes:
-            for path in sorted(root.rglob("*")):
-                if path.is_file() and path.suffix in self.suffixes and path.exists():
-                    self._remove(root, path, "suffix", report)
-        return report
+
+    def _prune_scripts(self, root: Path, report: PruneReport) -> None:
+        # Console scripts written by `uv pip install --target`: their shebang points to the
+        # build machine interpreter, so they cannot run on the target anyway.
+        scripts = root / "bin"
+        if scripts.is_dir():
+            self._remove(root, scripts, "scripts", report)
+
+    def _trim_dist_info(self, root: Path, report: PruneReport) -> None:
+        for dist_info in root.glob("*.dist-info"):
+            for name in DIST_INFO_BOOKKEEPING:
+                candidate = dist_info / name
+                if candidate.is_file():
+                    self._remove(root, candidate, "dist-info", report)
 
     def _prune_tests(self, root: Path, report: PruneReport) -> None:
-        # Only directories *inside* a package (depth >= 2) are considered, plus a stray
-        # top-level `tests` package some sloppy wheels ship. Directories named `testing`
-        # are never touched.
+        # Directories named `testing` are never touched: some are public APIs.
         candidates = [
             path
             for path in root.rglob("*")
@@ -126,5 +134,10 @@ class Pruner:
             and not any(part.endswith(".dist-info") for part in path.relative_to(root).parts)
         ]
         for path in sorted(candidates, key=lambda p: len(p.parts)):
-            if path.exists():
+            if path.exists():  # not already removed with a parent
                 self._remove(root, path, "tests", report)
+
+    def _prune_suffixes(self, root: Path, report: PruneReport) -> None:
+        for path in sorted(root.rglob("*")):
+            if path.is_file() and path.suffix in self.suffixes:
+                self._remove(root, path, "suffix", report)

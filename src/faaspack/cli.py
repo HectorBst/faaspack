@@ -12,10 +12,12 @@ from typing import Any
 from faaspack import __version__
 from faaspack.config import Options, common_options, load_project
 from faaspack.errors import FaaspackError, Finding, Level
-from faaspack.pipeline import BundleResult, bundle, optimize
+from faaspack.optimize import optimize
+from faaspack.pipeline import bundle
+from faaspack.results import BundleResult
 from faaspack.targets import available_targets
 from faaspack.uvcli import Uv
-from faaspack.verify import verify
+from faaspack.verify import Docker, VerifyOptions, verify
 
 EXIT_OK, EXIT_FINDINGS, EXIT_FATAL = 0, 1, 2
 
@@ -83,7 +85,7 @@ def cmd_bundle(args: argparse.Namespace) -> int:
     _print_bundle(result, 0 if args.quiet else 8)
     findings = result.all_findings()
     if args.verify:
-        for report in verify(result.manifest, docker=args.docker):
+        for report in verify(result.manifest, runtime=Docker(args.docker)):
             findings += report.findings
     print()
     return _report(findings, strict=args.strict)
@@ -118,14 +120,13 @@ def cmd_optimize(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    reports = verify(
-        Path(args.manifest),
-        docker=args.docker,
+    options = VerifyOptions(
         architectures=_archs(args.arch) or (),
-        extra_imports=args.imports or (),
-        skip=args.skip or (),
+        extra_imports=tuple(args.imports or ()),
+        skip=tuple(args.skip or ()),
         import_code=args.import_code,
     )
+    reports = verify(Path(args.manifest), options, runtime=Docker(args.docker))
     return _report([f for r in reports for f in r.findings], strict=args.strict)
 
 

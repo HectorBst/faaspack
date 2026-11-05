@@ -12,7 +12,7 @@ import hashlib
 import stat
 import time
 import zipfile
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,27 +36,41 @@ def _zip_time(epoch: int) -> tuple[int, int, int, int, int, int]:
 
 
 def _collect(parts: Sequence[tuple[Path, str]]) -> dict[str, Path | None]:
-    """Map archive names to source files (None for directories)."""
+    """Map archive names to source files (None for directories); reject duplicate files."""
     entries: dict[str, Path | None] = {}
     for source, raw_prefix in parts:
         prefix = raw_prefix.strip("/")
-        if prefix:
-            for i in range(1, len(prefix.split("/")) + 1):
-                entries.setdefault("/".join(prefix.split("/")[:i]) + "/", None)
-        if not source.is_dir():
-            continue
-        for path in source.rglob("*"):
-            if path.is_symlink():
-                continue
-            rel = path.relative_to(source).as_posix()
-            name = f"{prefix}/{rel}" if prefix else rel
-            if path.is_dir():
-                entries.setdefault(name + "/", None)
+        for directory in _prefix_directories(prefix):
+            entries.setdefault(directory, None)
+        for name, path in _tree_entries(source, prefix):
+            if path is None:
+                entries.setdefault(name, None)
             elif name in entries:
                 raise ValueError(f"duplicate archive entry: {name}")
             else:
                 entries[name] = path
     return entries
+
+
+def _prefix_directories(prefix: str) -> list[str]:
+    """``"a/b"`` -> ``["a/", "a/b/"]``: the directory entries of an archive prefix."""
+    parts = prefix.split("/") if prefix else []
+    return ["/".join(parts[:i]) + "/" for i in range(1, len(parts) + 1)]
+
+
+def _tree_entries(source: Path, prefix: str) -> Iterator[tuple[str, Path | None]]:
+    """Archive names under ``prefix`` of the files (and directories, as None) of ``source``.
+
+    Symbolic links are skipped: wheels cannot contain them.
+    """
+    if not source.is_dir():
+        return
+    for path in source.rglob("*"):
+        if path.is_symlink():
+            continue
+        rel = path.relative_to(source).as_posix()
+        name = f"{prefix}/{rel}" if prefix else rel
+        yield (name + "/", None) if path.is_dir() else (name, path)
 
 
 def write_zip(
@@ -89,7 +103,8 @@ def write_zip(
             archive.writestr(
                 info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=compression_level
             )
-    digest = hashlib.sha256(destination.read_bytes()).digest()
+    with destination.open("rb") as handle:
+        digest = hashlib.file_digest(handle, "sha256").digest()
     return ArchiveInfo(
         path=destination,
         size=destination.stat().st_size,

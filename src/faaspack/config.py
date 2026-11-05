@@ -9,7 +9,8 @@ from __future__ import annotations
 import os
 import tomllib
 import zlib
-from dataclasses import dataclass, field, fields, replace
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -63,26 +64,6 @@ class Options:
         return DEFAULT_EPOCH
 
 
-_TUPLE_FIELDS = {
-    "architectures",
-    "extras",
-    "groups",
-    "exclude_packages",
-    "prune_suffixes",
-    "keep",
-    "ignore_imports",
-}
-_BOOL_FIELDS = {
-    "only_binary",
-    "compile",
-    "trim_dist_info",
-    "prune_tests",
-    "prune_scripts",
-    "strip_vendored_libs",
-}
-_KNOWN = {f.name for f in fields(Options)}
-
-
 @dataclass(frozen=True)
 class Project:
     """What faaspack needs to know about the uv project being packaged."""
@@ -123,39 +104,96 @@ def load_project(root: Path) -> Project:
     )
 
 
-def _coerce(key: str, value: Any) -> Any:
-    name = key.replace("-", "_")
-    if name not in _KNOWN:
-        raise FaaspackError(f"unknown faaspack option: {key!r}")
-    if name in _TUPLE_FIELDS or name == "code":
-        if isinstance(value, str):
-            value = [value]
-        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
-            raise FaaspackError(f"option {key!r} must be a list of strings")
-        return tuple(value)
-    if name in _BOOL_FIELDS:
-        if not isinstance(value, bool):
-            raise FaaspackError(f"option {key!r} must be true or false")
-        return value
-    if name == "strip":
-        if value is False or value is None:
-            return None
-        if value not in ("debug", "unneeded"):
-            raise FaaspackError("option 'strip' must be false, 'debug' or 'unneeded'")
-        return cast(StripMode, value)
-    if name == "import_check":
-        if value not in ("warn", "error", "ignore"):
-            raise FaaspackError("option 'import-check' must be 'warn', 'error' or 'ignore'")
-        return value
-    if name in ("compression_level", "source_date_epoch"):
-        if not isinstance(value, int) or isinstance(value, bool):
-            raise FaaspackError(f"option {key!r} must be an integer")
-        if name == "compression_level" and not 0 <= value <= zlib.Z_BEST_COMPRESSION:
-            raise FaaspackError("option 'compression-level' must be between 0 and 9")
-        return value
+def _string_list(key: str, value: Any) -> tuple[str, ...]:
+    """A list of strings; a single string is accepted as a one-item list."""
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise FaaspackError(f"option {key!r} must be a list of strings")
+    return tuple(value)
+
+
+def _boolean(key: str, value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise FaaspackError(f"option {key!r} must be true or false")
+    return value
+
+
+def _integer(key: str, value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise FaaspackError(f"option {key!r} must be an integer")
+    return value
+
+
+def _compression_level(key: str, value: Any) -> int:
+    level = _integer(key, value)
+    if not 0 <= level <= zlib.Z_BEST_COMPRESSION:
+        raise FaaspackError("option 'compression-level' must be between 0 and 9")
+    return level
+
+
+def _strip_mode(_: str, value: Any) -> StripMode | None:
+    if value is False or value is None:
+        return None
+    if value not in ("debug", "unneeded"):
+        raise FaaspackError("option 'strip' must be false, 'debug' or 'unneeded'")
+    return cast(StripMode, value)
+
+
+def _import_check(_: str, value: Any) -> ImportCheck:
+    if value not in ("warn", "error", "ignore"):
+        raise FaaspackError("option 'import-check' must be 'warn', 'error' or 'ignore'")
+    return cast(ImportCheck, value)
+
+
+def _optional_string(key: str, value: Any) -> str | None:
     if value is not None and not isinstance(value, str):
         raise FaaspackError(f"option {key!r} must be a string")
     return value
+
+
+# Parser of each Options field, by field name.
+_PARSERS: dict[str, Callable[[str, Any], Any]] = {
+    **dict.fromkeys(
+        (
+            "architectures",
+            "code",
+            "exclude_packages",
+            "extras",
+            "groups",
+            "ignore_imports",
+            "keep",
+            "prune_suffixes",
+        ),
+        _string_list,
+    ),
+    **dict.fromkeys(
+        (
+            "compile",
+            "only_binary",
+            "prune_scripts",
+            "prune_tests",
+            "strip_vendored_libs",
+            "trim_dist_info",
+        ),
+        _boolean,
+    ),
+    **dict.fromkeys(
+        ("layout", "name", "output_dir", "package", "python", "strip_tool"), _optional_string
+    ),
+    "compression_level": _compression_level,
+    "import_check": _import_check,
+    "source_date_epoch": _integer,
+    "strip": _strip_mode,
+}
+
+
+def _coerce(key: str, value: Any) -> Any:
+    """Validate the TOML value of ``key`` (kebab-case) and convert it to the field type."""
+    name = key.replace("-", "_")
+    if name not in _PARSERS:
+        raise FaaspackError(f"unknown faaspack option: {key!r}")
+    return _PARSERS[name](key, value)
 
 
 def _apply(options: Options, table: dict[str, Any], *, skip: set[str]) -> Options:
