@@ -44,6 +44,38 @@ def test_scan_ignores_guarded_and_relative_imports(tmp_path: Path) -> None:
     assert found["boto3"] == ["app/handler.py:4"]
 
 
+GUARDED = """
+import contextlib
+import os
+import sys
+from contextlib import suppress
+
+with suppress(ImportError):
+    import orjson
+with contextlib.suppress(ModuleNotFoundError, ValueError):
+    import ujson
+with open("x") as handle, suppress(KeyError):
+    import not_guarded_by_keyerror
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli
+if sys.platform == "win32" or os.name == "nt":
+    import winloop
+elif sys.platform.startswith("linux"):
+    import uvloop
+if os.environ.get("FAST"):
+    import plain_condition
+"""
+
+
+def test_suppress_and_interpreter_conditions_guard_imports(tmp_path: Path) -> None:
+    (tmp_path / "m.py").write_text(GUARDED)
+    found = scan_imports([tmp_path])
+    assert set(found) == {"contextlib", "os", "sys", "not_guarded_by_keyerror", "plain_condition"}
+
+
 def test_top_level_modules(tmp_path: Path) -> None:
     for rel in [
         "pkg/__init__.py",
