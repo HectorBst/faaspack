@@ -86,3 +86,17 @@ Every bug fix comes with a test that fails without the fix.
   reason is not obvious (a platform quirk, a measured trade-off), never *what*.
 - Public functions and classes have a docstring; findings keep their stable `FPxxx` code,
   documented in the README.
+
+## Releasing
+
+1. Update the version (`uv version --bump minor`, or `patch`) and move the `Unreleased` entries
+   of `CHANGELOG.md` under the new version, in a pull request.
+2. Once it is merged, tag the merge commit and push the tag:
+
+   ```bash
+   git tag v0.2.0 && git push origin v0.2.0
+   ```
+
+3. The `Release` workflow checks that the tag matches the version, builds the distributions,
+   publishes them to PyPI with trusted publishing (no token stored in the repository) and
+   creates the GitHub release.

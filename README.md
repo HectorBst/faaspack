@@ -1,5 +1,10 @@
 # faaspack
 
+[![CI](https://github.com/HectorBst/faaspack/actions/workflows/ci.yml/badge.svg)](https://github.com/HectorBst/faaspack/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/faaspack)](https://pypi.org/project/faaspack/)
+[![Python versions](https://img.shields.io/pypi/pyversions/faaspack)](https://pypi.org/project/faaspack/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Build optimized Python deployment packages for **AWS Lambda** (function `.zip`, layer, or code
 in the function and dependencies in a layer) and **Scaleway Serverless Functions**, from a uv
 project. `uv.lock` stays the single source of truth: faaspack exports the lock, installs the
@@ -12,9 +17,8 @@ uvx faaspack verify dist/faaspack/my-api-1.0.0-lambda.manifest.json
 uvx faaspack optimize /app/.venv/lib/python3.14/site-packages --python /app/.venv/bin/python
 ```
 
-> Until the package is published on PyPI, replace `uvx faaspack` with
-> `uvx --from git+https://github.com/HectorBst/faaspack faaspack`, or add faaspack to the `dev`
-> group of your project and run `uv run faaspack`.
+`uvx faaspack` runs the latest release without installing it. To pin the version per project,
+add it to the development dependencies (`uv add --dev faaspack`) and run `uv run faaspack`.
 
 faaspack needs [uv](https://docs.astral.sh/uv/) 0.12.17 or newer on the build machine, and
 Docker for `faaspack verify` only. faaspack itself has no runtime dependency.
