@@ -25,8 +25,7 @@ def test_unchecked_hash_and_relocated_filename(tmp_path: Path) -> None:
     flags, filename = read_pyc(pyc)
     assert flags == 0b01  # hash-based, check_source off: unchecked-hash
     assert filename == "/var/task/pkg/mod.py"
-    assert len(report.failures) == 1
-    assert report.failures[0].endswith("template.py")
+    assert report.failures == ["pkg/template.py"]
 
 
 def test_relative_filename_when_runtime_root_unknown(tmp_path: Path) -> None:

@@ -120,6 +120,20 @@ def test_scaleway_uses_musl_and_a_package_directory(project: Path) -> None:
     assert codes(result) == ["FP401", "FP401"]  # boto3 is not provided by Scaleway
 
 
+def test_scaleway_tracebacks_point_into_the_package_directory(project: Path) -> None:
+    result = bundle(project, "scaleway-functions", {"output_dir": "out"}, uv=FakeUv())
+    pyc = f"package/dep/__pycache__/__init__.{CACHE_TAG}.pyc"
+    assert co_filename(result, 0, pyc) == "package/dep/__init__.py"
+    handler = f"demo_app/__pycache__/handler.{CACHE_TAG}.pyc"
+    assert co_filename(result, 0, handler) == "demo_app/handler.py"
+
+
+def test_uncompilable_files_are_reported_relative_to_the_archive(project: Path) -> None:
+    (project / "src/demo_app/template.py").write_text("{% if user %}hello{% endif %}\n")
+    result = bundle(project, "lambda", {"output_dir": "out"}, uv=FakeUv())
+    assert result.builds[0].compile_failures == ["demo_app/template.py"]
+
+
 def test_one_build_per_architecture(project: Path) -> None:
     result = bundle(
         project, "lambda", {"output_dir": "out", "architectures": ("x86_64", "arm64")}, uv=FakeUv()

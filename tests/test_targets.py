@@ -89,6 +89,11 @@ def test_lambda_size_findings() -> None:
     assert [f.code for f in split] == ["FP202", "FP204"]
 
 
+def test_lambda_quota_message_uses_the_unit_of_the_limit() -> None:
+    (finding,) = LambdaTarget().check_sizes([BuiltArtifact("function", 1, UNZIPPED_LIMIT + 1)])
+    assert finding.message.startswith("unzipped size 250.0 MiB exceeds the 250 MiB Lambda quota")
+
+
 def test_scaleway_size_findings() -> None:
     findings = ScalewayFunctionsTarget().check_sizes(
         [BuiltArtifact("function", 101 * 2**20, 501 * 2**20)]

@@ -90,8 +90,8 @@ class LambdaTarget(Target):
                 Finding(
                     "FP202",
                     Level.ERROR,
-                    f"unzipped size {total / 1e6:.1f} MB exceeds the 250 MB Lambda quota "
-                    "(262144000 bytes, function and layers together)",
+                    f"unzipped size {total / 2**20:.1f} MiB exceeds the 250 MiB Lambda quota "
+                    "(262,144,000 bytes, function and layers together)",
                 )
             )
         elif total > CONTAINER_IMAGE_HINT:
