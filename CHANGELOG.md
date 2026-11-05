@@ -7,6 +7,10 @@ compatibility).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-05
+
+First release on PyPI.
+
 ### Added
 
 - FP101 also reports native modules built for macOS (Mach-O) or Windows (PE).
@@ -24,6 +28,8 @@ compatibility).
   (`package/<module>/...` for dependencies).
 - FP104 lists files relative to the archive root, and FP202 reports sizes in MiB.
 - `faaspack.__version__` is read from the installed metadata.
+- The comparison with other tools (README, `docs/design.md`) is updated as of 2026-11-05: the
+  Serverless Framework now ships `checked-hash` bytecode for pip-installed dependencies.
 
 ### Fixed
 
@@ -44,4 +50,5 @@ First version, not published on PyPI: `bundle`, `verify`, `optimize` and `target
 `lambda` (function, layer and split layouts, x86_64 and arm64) and `scaleway-functions`
 targets.
 
-[Unreleased]: https://github.com/HectorBst/faaspack/commits/main
+[Unreleased]: https://github.com/HectorBst/faaspack/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/HectorBst/faaspack/releases/tag/v0.2.0
