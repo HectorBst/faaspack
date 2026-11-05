@@ -96,23 +96,20 @@ def scan_imports(roots: Iterable[Path]) -> dict[str, list[str]]:
 
 def top_level_modules(root: Path) -> list[str]:
     """Importable top-level names of a flat tree (a ``--target`` install or code dir)."""
-    names: set[str] = set()
     if not root.is_dir():
         return []
-    for entry in root.iterdir():
-        name = entry.name
-        if entry.is_dir():
-            if (
-                name in _NON_MODULE_DIRS
-                or name.endswith((".dist-info", ".data", ".libs", ".egg-info"))
-                or not name.isidentifier()
-            ):
-                continue
-            names.add(name)
-        elif name.endswith(".py") and name[:-3].isidentifier():
-            names.add(name[:-3])
-        elif name.endswith(".so") or ".so." in name:
-            stem = name.split(".")[0]
-            if stem.isidentifier():
-                names.add(stem)
-    return sorted(names)
+    names = {_module_name(entry) for entry in root.iterdir()}
+    return sorted(name for name in names if name is not None and name.isidentifier())
+
+
+def _module_name(entry: Path) -> str | None:
+    """The module an entry of a flat tree provides, if any (not checked as an identifier)."""
+    name = entry.name
+    if entry.is_dir():
+        is_metadata = name.endswith((".dist-info", ".data", ".libs", ".egg-info"))
+        return None if is_metadata or name in _NON_MODULE_DIRS else name
+    if name.endswith(".py"):
+        return name.removesuffix(".py")
+    if name.endswith(".so") or ".so." in name:
+        return name.split(".")[0]  # _speedups.cpython-314-x86_64-linux-gnu.so -> _speedups
+    return None

@@ -75,6 +75,13 @@ class StripReport:
     saved_bytes: int = 0
     failures: list[str] = field(default_factory=list)
 
+    def merge(self, other: StripReport) -> StripReport:
+        """Add ``other`` to this report (the tool of the first report is kept)."""
+        self.stripped += other.stripped
+        self.saved_bytes += other.saved_bytes
+        self.failures += other.failures
+        return self
+
 
 def host_architecture() -> str:
     machine = platform.machine().lower()

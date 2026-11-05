@@ -1,4 +1,4 @@
-"""Thin wrapper around the uv command line.
+"""Adapter for the uv command line.
 
 faaspack never re-implements resolution or installation: uv.lock stays the single
 source of truth, exported with ``uv export --frozen`` and installed for the target
@@ -12,9 +12,61 @@ import shlex
 import shutil
 import subprocess
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from faaspack.errors import FaaspackError
+
+_ERROR_LINES_SHOWN = 15
+
+
+@dataclass(frozen=True)
+class LockSelection:
+    """The part of uv.lock to export: a workspace member, its extras and groups, minus some
+    packages."""
+
+    package: str | None = None
+    extras: tuple[str, ...] = ()
+    groups: tuple[str, ...] = ()
+    exclude: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class InstallPlatform:
+    """The Python minor version and the uv ``--python-platform`` an installation targets."""
+
+    python: str
+    platform: str
+
+
+class UvCommands(Protocol):
+    """The uv operations a bundle needs. :class:`Uv` runs the real uv; tests use fakes."""
+
+    def export_requirements(self, project: Path, output: Path, selection: LockSelection) -> None:
+        """Write the locked, non-dev dependencies of ``project`` (itself excluded)."""
+
+    def build_wheel(self, project: Path, out_dir: Path, *, package: str | None) -> Path:
+        """Build the project wheel into ``out_dir`` and return its path."""
+
+    def install_requirements(
+        self,
+        project: Path,
+        target_dir: Path,
+        requirements: Path,
+        *,
+        platform: InstallPlatform,
+        only_binary: bool,
+    ) -> None:
+        """Install exactly the listed requirements into the flat directory ``target_dir``."""
+
+    def install_wheels(
+        self, project: Path, target_dir: Path, wheels: Sequence[Path], *, platform: InstallPlatform
+    ) -> None:
+        """Install the given wheels, without their dependencies, into ``target_dir``."""
+
+    def find_python(self, version: str) -> Path:
+        """Return an interpreter of the requested minor version."""
 
 
 def locate_uv(explicit: str | None = None) -> str:
@@ -29,6 +81,8 @@ def locate_uv(explicit: str | None = None) -> str:
 
 
 class Uv:
+    """Runs uv commands, from the project root so that its ``[tool.uv]`` settings apply."""
+
     def __init__(
         self, binary: str | None = None, *, echo: Callable[[str], None] | None = None
     ) -> None:
@@ -37,26 +91,19 @@ class Uv:
         self.echo = echo
 
     def run(self, args: Sequence[str], *, cwd: Path | None = None) -> str:
-        cmd = [self.binary, *args]
+        """Run ``uv <args>`` and return its standard output; raise on a non-zero exit."""
         if self.echo is not None:
             self.echo(f"+ uv {shlex.join(args)}")
-        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+        proc = subprocess.run(
+            [self.binary, *args], cwd=cwd, capture_output=True, text=True, check=False
+        )
         if proc.returncode != 0:
-            tail = "\n".join((proc.stderr or proc.stdout).strip().splitlines()[-15:])
+            output = (proc.stderr or proc.stdout).strip().splitlines()
+            tail = "\n".join(output[-_ERROR_LINES_SHOWN:])
             raise FaaspackError(f"`uv {' '.join(args)}` failed (exit {proc.returncode}):\n{tail}")
         return proc.stdout
 
-    def export_requirements(
-        self,
-        project: Path,
-        output: Path,
-        *,
-        package: str | None,
-        extras: Sequence[str],
-        groups: Sequence[str],
-        exclude: Sequence[str],
-    ) -> None:
-        """Export the locked, non-dev dependencies of the project (the project itself excluded)."""
+    def export_requirements(self, project: Path, output: Path, selection: LockSelection) -> None:
         args = [
             "export",
             "--frozen",
@@ -69,51 +116,49 @@ class Uv:
             "--output-file",
             str(output),
         ]
-        if package:
-            args += ["--package", package]
-        for extra in extras:
-            args += ["--extra", extra]
-        for group in groups:
-            args += ["--group", group]
-        for name in exclude:
-            args += ["--no-emit-package", name]
+        if selection.package:
+            args += ["--package", selection.package]
+        args += _repeat("--extra", selection.extras)
+        args += _repeat("--group", selection.groups)
+        args += _repeat("--no-emit-package", selection.exclude)
         self.run(args, cwd=project)
 
-    def install_target(
+    def install_requirements(
         self,
         project: Path,
         target_dir: Path,
+        requirements: Path,
         *,
-        python: str,
-        platform: str,
-        requirements: Path | None = None,
-        wheels: Sequence[Path] = (),
-        only_binary: bool = True,
+        platform: InstallPlatform,
+        only_binary: bool,
     ) -> None:
-        """Install into a flat directory for a foreign platform, without bytecode.
+        # --no-deps keeps the installed set exactly equal to the exported lock.
+        extra = ["--only-binary", ":all:"] if only_binary else []
+        self._install(project, target_dir, platform, [*extra, "--requirement", str(requirements)])
 
-        ``--no-deps`` keeps the installed set exactly equal to the exported lock.
-        Running from the project root keeps its [tool.uv] index configuration.
-        """
+    def install_wheels(
+        self, project: Path, target_dir: Path, wheels: Sequence[Path], *, platform: InstallPlatform
+    ) -> None:
+        self._install(project, target_dir, platform, [str(wheel) for wheel in wheels])
+
+    def _install(
+        self, project: Path, target_dir: Path, platform: InstallPlatform, sources: Sequence[str]
+    ) -> None:
         args = [
             "pip",
             "install",
             "--target",
             str(target_dir),
             "--python",
-            python,
+            platform.python,
             "--python-platform",
-            platform,
+            platform.platform,
             "--no-deps",
-            "--no-compile-bytecode",
-            "--no-installer-metadata",
+            "--no-compile-bytecode",  # compiled later, in unchecked-hash mode
+            "--no-installer-metadata",  # hidden but accepted: drops INSTALLER, REQUESTED...
             "--quiet",
+            *sources,
         ]
-        if only_binary:
-            args += ["--only-binary", ":all:"]
-        if requirements is not None:
-            args += ["--requirement", str(requirements)]
-        args += [str(w) for w in wheels]
         self.run(args, cwd=project)
 
     def build_wheel(self, project: Path, out_dir: Path, *, package: str | None) -> Path:
@@ -143,3 +188,7 @@ class Uv:
         if probe.stdout.strip() != version:
             raise FaaspackError(f"uv returned {path} for Python {version}: {probe.stdout.strip()}")
         return path
+
+
+def _repeat(flag: str, values: Sequence[str]) -> list[str]:
+    return [item for value in values for item in (flag, value)]

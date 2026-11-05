@@ -84,6 +84,20 @@ three packages are too many versions to keep compatible for a small project. faa
 package whose targets are registered in the `faaspack.targets` entry point group; a target can
 move to its own package later if it evolves at a different pace.
 
+## Code structure: ports for external systems only
+
+faaspack drives two external systems that are slow, need the network and are absent from many
+machines: uv and a container runtime. Each sits behind a small protocol (`UvCommands`,
+`ContainerRuntime`) with one real implementation (`Uv`, `Docker`), so the whole bundle and
+verify logic runs in unit tests with fakes, and the real implementations are exercised by
+integration tests.
+
+A full hexagonal layout (domain, application and adapter packages) was considered and not
+adopted: the domain is small (targets, layouts, findings, pruning rules), most steps are thin
+wrappers over the file system and the standard library, and an extra layer of indirection would
+make the roughly 1,500 lines harder to navigate without making them easier to test. The file
+system is used directly, in temporary directories, because it is fast and real.
+
 ## Bytecode: `unchecked-hash`
 
 Timestamp-based `.pyc` files are rejected once the zip rewrites modification times, and
