@@ -180,6 +180,22 @@ def test_missing_code_path_is_fatal(tmp_path: Path) -> None:
         bundle(project, "lambda", {"output_dir": "out"}, uv=FakeUv())
 
 
+def test_code_paths_with_the_same_name_are_fatal(tmp_path: Path) -> None:
+    project = make_project(
+        tmp_path / "demo",
+        build_system=False,
+        extra_toml='[tool.faaspack]\ncode = ["src/demo_app", "other/demo_app"]\n',
+    )
+    (project / "other/demo_app").mkdir(parents=True)
+    with pytest.raises(FaaspackError, match="would both be copied as 'demo_app'"):
+        bundle(project, "lambda", {"output_dir": "out"}, uv=FakeUv())
+
+
+def test_an_interpreter_that_does_not_run_is_fatal(project: Path) -> None:
+    with pytest.raises(FaaspackError, match="cannot list its standard library"):
+        bundle(project, "lambda", {"output_dir": "out"}, uv=FakeUv(python=project / "nope"))
+
+
 def test_files_that_do_not_compile_stay_as_sources(project: Path) -> None:
     (project / "src/demo_app/template.py").write_text("{% if user %}hello{% endif %}\n")
     result = bundle(project, "lambda", {"output_dir": "out"}, uv=FakeUv())

@@ -52,7 +52,7 @@ and a manifest to `dist/faaspack/`.
 | `--output-dir`, `--uv`, `-v`, `-q` | output directory, uv binary, print uv commands, quiet mode |
 
 Exit codes: 0 success, 1 blocking finding (an error, or a warning with `--strict`), 2 fatal
-error (configuration, uv).
+error (configuration, uv, unreadable manifest), 130 interrupted.
 
 ### `faaspack verify <manifest>`
 
@@ -66,7 +66,7 @@ goal is zero). `--import-code` also imports the project's own modules (which run
 initialization code); `--import` and `--skip` adjust the list. arm64 on an x86_64 machine
 needs QEMU emulation (`docker run --privileged --rm tonistiigi/binfmt --install arm64`).
 
-### `faaspack optimize <directory>... --python <path or version>`
+### `faaspack optimize <directory>... --python <path, command or version>`
 
 Prunes and compiles in place a tree already installed at its final location: the
 `site-packages` of a Lambda container image, of Scaleway Serverless Containers or of Fargate.

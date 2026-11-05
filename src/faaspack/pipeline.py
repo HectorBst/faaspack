@@ -379,20 +379,28 @@ def _has_requirements(requirements: Path) -> bool:
 
 
 def _stdlib_names(python: Path) -> frozenset[str]:
-    proc = subprocess.run(
-        [str(python), "-c", "import json, sys; print(json.dumps(sorted(sys.stdlib_module_names)))"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return frozenset(json.loads(proc.stdout))
+    script = "import json, sys; print(json.dumps(sorted(sys.stdlib_module_names)))"
+    try:
+        proc = subprocess.run(
+            [str(python), "-c", script], capture_output=True, text=True, check=True
+        )
+        return frozenset(json.loads(proc.stdout))
+    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+        raise FaaspackError(f"{python} cannot list its standard library modules: {exc}") from exc
 
 
 def _copy_code(project: Project, paths: Sequence[str], destination: Path) -> None:
+    copied: dict[str, str] = {}  # name in the archive -> code path
     for item in paths:
         source = (project.root / item).resolve()
         if not source.exists():
             raise FaaspackError(f"code path not found: {item}")
+        if source.name in copied:
+            raise FaaspackError(
+                f"code paths {copied[source.name]!r} and {item!r} would both be copied "
+                f"as {source.name!r}"
+            )
+        copied[source.name] = item
         target = destination / source.name
         if source.is_dir():
             shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))

@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from faaspack.errors import FaaspackError, Finding, Level
+from faaspack.manifest import load_manifest
 from faaspack.targets import get_target
 from faaspack.targets.base import VerifySpec
 
@@ -97,14 +98,21 @@ def verify(
     """Import the artifacts of each build of the manifest in the runtime image."""
     runtime = runtime or Docker()
     options = options or VerifyOptions()
-    manifest: dict[str, Any] = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = load_manifest(manifest_path)
     target = get_target(manifest["target"])
+    builds = [
+        build
+        for build in manifest["builds"]
+        if not options.architectures or build["architecture"] in options.architectures
+    ]
+    if not builds:
+        built = ", ".join(build["architecture"] for build in manifest["builds"])
+        raise FaaspackError(
+            f"{manifest_path} has no build for {options.architectures} (built: {built})"
+        )
     reports = []
-    for build in manifest["builds"]:
-        arch = build["architecture"]
-        if options.architectures and arch not in options.architectures:
-            continue
-        spec = target.verify_spec(python=manifest["python"], architecture=arch)
+    for build in builds:
+        spec = target.verify_spec(python=manifest["python"], architecture=build["architecture"])
         reports.append(_verify_build(build, spec, manifest_path.parent, options, runtime))
     return reports
 

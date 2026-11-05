@@ -88,6 +88,26 @@ def test_timeouts_are_warnings(manifest: Path) -> None:
     assert [f.message for f in report.findings] == ["[x86_64] verification timed out"]
 
 
+def test_unreadable_manifests_are_fatal(tmp_path: Path) -> None:
+    runtime = FakeRuntime()
+    with pytest.raises(FaaspackError, match="cannot read manifest"):
+        verify(tmp_path / "missing.json", runtime=runtime)
+    (tmp_path / "list.json").write_text("[]")
+    with pytest.raises(FaaspackError, match="is not a faaspack manifest"):
+        verify(tmp_path / "list.json", runtime=runtime)
+    (tmp_path / "broken.json").write_text("{")
+    with pytest.raises(FaaspackError, match="cannot read manifest"):
+        verify(tmp_path / "broken.json", runtime=runtime)
+
+
+def test_an_architecture_absent_from_the_manifest_is_fatal(tmp_path: Path) -> None:
+    manifest = bundle(
+        make_project(tmp_path / "demo"), "lambda", {"output_dir": "out"}, uv=FakeUv()
+    ).manifest
+    with pytest.raises(FaaspackError, match=r"no build for \('arm64',\) .*built: x86_64"):
+        verify(manifest, VerifyOptions(architectures=("arm64",)), runtime=FakeRuntime())
+
+
 def test_scaleway_uses_the_build_image(tmp_path: Path) -> None:
     project = make_project(tmp_path / "demo")
     manifest = bundle(project, "scaleway-functions", {"output_dir": "out"}, uv=FakeUv()).manifest

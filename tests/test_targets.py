@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from importlib.metadata import EntryPoint
+
 import pytest
 
 from faaspack.errors import FaaspackError, Level
@@ -13,6 +15,22 @@ def test_registry_exposes_both_targets() -> None:
     assert set(available_targets()) >= {"lambda", "scaleway-functions"}
     with pytest.raises(FaaspackError, match="unknown target"):
         get_target("gcp")
+
+
+def test_a_broken_plugin_is_reported_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    broken = EntryPoint(name="broken", value="no_such_module:Target", group="faaspack.targets")
+    monkeypatch.setattr("faaspack.targets.entry_points", lambda group: [broken])
+    with pytest.raises(
+        FaaspackError, match=r"target 'broken' \(no_such_module:Target\) cannot be loaded"
+    ):
+        available_targets()
+
+
+def test_a_plugin_must_be_a_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrong = EntryPoint(name="wrong", value="pathlib:Path", group="faaspack.targets")
+    monkeypatch.setattr("faaspack.targets.entry_points", lambda group: [wrong])
+    with pytest.raises(FaaspackError, match="is not a faaspack Target"):
+        available_targets()
 
 
 @pytest.mark.parametrize(
