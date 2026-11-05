@@ -1,0 +1,45 @@
+name: Bug report
+description: faaspack produced a wrong artifact, a wrong finding or crashed.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The command line, and the relevant part of `pyproject.toml` (`[tool.faaspack]`).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: faaspack output with `-v`, and the manifest if one was written.
+      render: text
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `faaspack --version` and `uv --version`, and the build machine OS.
+      placeholder: faaspack 0.1.0, uv 0.13.7, Ubuntu 24.04 x86_64
+    validations:
+      required: true
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target and layout
+      options:
+        - lambda / function
+        - lambda / layer
+        - lambda / split
+        - scaleway-functions
+        - optimize
+        - other
+    validations:
+      required: true
