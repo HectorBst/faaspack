@@ -118,7 +118,7 @@ ignore-imports = ["boto3"]
 | `keep` | `[]` | glob patterns (relative to the installed root) never removed, e.g. `"numpy/_core/include/*"` |
 | `strip` | `false` | `debug` or `unneeded` |
 | `strip-vendored-libs` | `false` | also strips the `*.libs/` directories repaired by auditwheel (known ELF corruption risk) |
-| `strip-tool` | auto | native `strip`, else `aarch64-linux-gnu-strip`/`x86_64-linux-gnu-strip` or `llvm-strip` for cross builds |
+| `strip-tool` | auto | `strip` on a Linux host of the same architecture, else `aarch64-linux-gnu-strip`/`x86_64-linux-gnu-strip` or `llvm-strip` (cross builds, macOS) |
 | `import-check` | `warn` | unsatisfied imports of the code: `warn`, `error`, `ignore` |
 | `ignore-imports` | `[]` | modules never reported |
 | `output-dir` | `dist/faaspack` | directory of the zips and the manifest |
@@ -190,7 +190,7 @@ The import analysis is static and covers the project code: imports guarded by
 
 | Code | Level | Meaning |
 |---|---|---|
-| FP101 | error | `.so` built for another architecture |
+| FP101 | error | native module built for another architecture, or for macOS or Windows (Mach-O, PE) |
 | FP102 | error | extension module built for another libc (glibc/musl) |
 | FP103 | warning | `strip` failed on a file (left untouched) |
 | FP104 | info | `.py` files that do not compile (templates, Python 2), kept as sources |

@@ -6,6 +6,7 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,14 +19,24 @@ _ELF_MAGIC = b"\x7fELF"
 _ELF_DATA_LITTLE_ENDIAN = 1  # EI_DATA byte of e_ident
 _ELF_MACHINE_OFFSET = 18  # after e_ident (16 bytes) and e_type (2 bytes)
 _EXT_LIBC = re.compile(r"-linux-(gnu|musl)[a-z]*\.so$")
+# Magic numbers of native formats that Linux cannot load: a wheel built on the wrong machine.
+_FOREIGN_FORMATS = {
+    b"\xcf\xfa\xed\xfe": "Mach-O (macOS)",
+    b"\xce\xfa\xed\xfe": "Mach-O (macOS)",
+    b"\xca\xfe\xba\xbe": "Mach-O universal (macOS)",
+    b"MZ": "PE (Windows)",
+}
+_NATIVE_SUFFIXES = (".so", ".dylib", ".pyd")
 
 
 def iter_shared_objects(root: Path) -> Iterator[Path]:
+    """Native libraries and extension modules under ``root``, whatever their format."""
     for path in sorted(root.rglob("*")):
+        name = path.name
         if (
             path.is_file()
             and not path.is_symlink()
-            and (path.name.endswith(".so") or ".so." in path.name)
+            and (name.endswith(_NATIVE_SUFFIXES) or ".so." in name)
         ):
             yield path
 
@@ -41,21 +52,23 @@ def elf_machine(path: Path) -> int | None:
     return int.from_bytes(header[_ELF_MACHINE_OFFSET:end], "little" if little_endian else "big")
 
 
+def foreign_format(path: Path) -> str | None:
+    """Name of the non-Linux native format of ``path`` (Mach-O, PE), if it has one."""
+    with path.open("rb") as handle:
+        magic = handle.read(4)
+    return next(
+        (name for prefix, name in _FOREIGN_FORMATS.items() if magic.startswith(prefix)), None
+    )
+
+
 def check_binaries(root: Path, *, architecture: str, libc: str) -> list[Finding]:
-    """Catch wheels built for the wrong CPU or libc before they reach the runtime."""
+    """Catch wheels built for the wrong CPU, OS or libc before they reach the runtime."""
     findings: list[Finding] = []
-    expected = ELF_MACHINES[architecture]
     for path in iter_shared_objects(root):
         rel = path.relative_to(root).as_posix()
-        machine = elf_machine(path)
-        if machine is not None and machine != expected:
-            findings.append(
-                Finding(
-                    "FP101",
-                    Level.ERROR,
-                    f"{rel}: ELF machine {machine}, expected {expected} ({architecture})",
-                )
-            )
+        problem = _architecture_problem(path, architecture)
+        if problem is not None:
+            findings.append(Finding("FP101", Level.ERROR, f"{rel}: {problem}"))
         match = _EXT_LIBC.search(path.name)
         if match and match.group(1) != libc:
             findings.append(
@@ -66,6 +79,17 @@ def check_binaries(root: Path, *, architecture: str, libc: str) -> list[Finding]
                 )
             )
     return findings
+
+
+def _architecture_problem(path: Path, architecture: str) -> str | None:
+    expected = ELF_MACHINES[architecture]
+    machine = elf_machine(path)
+    if machine is None:
+        kind = foreign_format(path)
+        return None if kind is None else f"{kind} binary, the runtime loads Linux ELF files only"
+    if machine != expected:
+        return f"ELF machine {machine}, expected {expected} ({architecture})"
+    return None
 
 
 @dataclass
@@ -101,7 +125,8 @@ def find_strip_tool(architecture: str, explicit: str | None = None) -> str:
         return found
     gnu_prefix = {"x86_64": "x86_64-linux-gnu-", "arm64": "aarch64-linux-gnu-"}[architecture]
     candidates = [f"{gnu_prefix}strip", "llvm-strip"]
-    if architecture == host_architecture():
+    # Outside Linux, `strip` is the system's own (cctools on macOS) and rejects ELF files.
+    if architecture == host_architecture() and sys.platform.startswith("linux"):
         candidates.insert(0, "strip")
     for candidate in candidates:
         found = shutil.which(candidate)
@@ -132,7 +157,8 @@ def strip_binaries(
     for path in iter_shared_objects(root):
         if elf_machine(path) is None:
             continue
-        if not include_vendored_libs and any(p.endswith(".libs") for p in path.parts):
+        vendored = any(part.endswith(".libs") for part in path.relative_to(root).parts[:-1])
+        if vendored and not include_vendored_libs:
             continue
         before = path.stat().st_size
         proc = subprocess.run(
