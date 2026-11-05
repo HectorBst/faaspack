@@ -30,7 +30,15 @@ def _archs(values: Sequence[str] | None) -> tuple[str, ...] | None:
     return tuple(a.strip() for v in values for a in v.split(",") if a.strip())
 
 
-def _report(findings: Sequence[Finding], strict: bool) -> int:
+def _echo(message: str) -> None:
+    print(message, flush=True)
+
+
+def _silent(_: str) -> None:
+    return None
+
+
+def _report(findings: Sequence[Finding], *, strict: bool) -> int:
     for text in dict.fromkeys(str(f) for f in findings):  # same finding for every arch
         print(text)
     failing = {Level.ERROR} | ({Level.WARNING} if strict else set())
@@ -69,8 +77,8 @@ def cmd_bundle(args: argparse.Namespace) -> int:
         "strip": args.strip,
         "compile": False if args.no_compile else None,
     }
-    uv = Uv(args.uv, verbose=args.verbose)
-    log = (lambda msg: print(msg, flush=True)) if not args.quiet else (lambda msg: None)
+    uv = Uv(args.uv, echo=_echo if args.verbose else None)
+    log = _silent if args.quiet else _echo
     result = bundle(Path(args.project), args.target, overrides, uv=uv, log=log)
     _print_bundle(result, 0 if args.quiet else 8)
     findings = result.all_findings()
@@ -78,7 +86,7 @@ def cmd_bundle(args: argparse.Namespace) -> int:
         for report in verify(result.manifest, docker=args.docker):
             findings += report.findings
     print()
-    return _report(findings, args.strict)
+    return _report(findings, strict=args.strict)
 
 
 def cmd_optimize(args: argparse.Namespace) -> int:
@@ -118,7 +126,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         skip=args.skip or (),
         import_code=args.import_code,
     )
-    return _report([f for r in reports for f in r.findings], args.strict)
+    return _report([f for r in reports for f in r.findings], strict=args.strict)
 
 
 def cmd_targets(_: argparse.Namespace) -> int:

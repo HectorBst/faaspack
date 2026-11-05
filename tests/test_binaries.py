@@ -51,7 +51,7 @@ def test_wrong_architecture_and_libc_are_errors(tmp_path: Path) -> None:
 
 
 def test_missing_cross_strip_tool(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(shutil, "which", lambda name: None)
+    monkeypatch.setattr(shutil, "which", lambda _: None)
     with pytest.raises(FaaspackError, match="no strip tool"):
         find_strip_tool("arm64")
     with pytest.raises(FaaspackError, match="not found"):

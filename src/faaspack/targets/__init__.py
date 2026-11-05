@@ -5,7 +5,9 @@ from __future__ import annotations
 from importlib.metadata import entry_points
 
 from faaspack.errors import FaaspackError
+from faaspack.targets.aws_lambda import LambdaTarget
 from faaspack.targets.base import Target
+from faaspack.targets.scaleway import ScalewayFunctionsTarget
 
 GROUP = "faaspack.targets"
 
@@ -18,9 +20,6 @@ def available_targets() -> dict[str, type[Target]]:
             raise FaaspackError(f"entry point {entry.name!r} is not a faaspack Target")
         targets[entry.name] = loaded
     if not targets:  # running from a source tree without installed metadata
-        from faaspack.targets.aws_lambda import LambdaTarget
-        from faaspack.targets.scaleway import ScalewayFunctionsTarget
-
         targets = {
             LambdaTarget.name: LambdaTarget,
             ScalewayFunctionsTarget.name: ScalewayFunctionsTarget,

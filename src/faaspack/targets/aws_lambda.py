@@ -23,6 +23,7 @@ from faaspack.targets.base import ArtifactSpec, BuiltArtifact, Target, VerifySpe
 DIRECT_UPLOAD_LIMIT = 50 * 1024 * 1024
 UNZIPPED_LIMIT = 262_144_000
 CONTAINER_IMAGE_HINT = 200 * 1024 * 1024
+FIRST_AL2023_MINOR = 12  # python3.12 is the first runtime on Amazon Linux 2023
 
 _SDK_HINT = (
     "provided by the Lambda runtime with a version AWS may change at any time; AWS "
@@ -57,8 +58,8 @@ class LambdaTarget(Target):
     def python_platform(self, *, python: str, architecture: str) -> str:
         cpu = {"x86_64": "x86_64", "arm64": "aarch64"}[architecture]
         minor = int(python.split(".")[1])
-        # Amazon Linux 2023 (glibc 2.34) from python3.12, Amazon Linux 2 (glibc 2.26) before.
-        policy = "manylinux_2_34" if minor >= 12 else "manylinux2014"
+        # Amazon Linux 2023 has glibc 2.34; Amazon Linux 2 has glibc 2.26, below manylinux_2_28.
+        policy = "manylinux_2_34" if minor >= FIRST_AL2023_MINOR else "manylinux2014"
         return f"{cpu}-{policy}"
 
     def plan(self, layout: str) -> list[ArtifactSpec]:
@@ -73,17 +74,16 @@ class LambdaTarget(Target):
         ]
 
     def check_sizes(self, artifacts: Sequence[BuiltArtifact]) -> list[Finding]:
-        findings: list[Finding] = []
-        for artifact in artifacts:
-            if artifact.size > DIRECT_UPLOAD_LIMIT:
-                findings.append(
-                    Finding(
-                        "FP201",
-                        Level.WARNING,
-                        f"{artifact.kind} zip is {artifact.size / 2**20:.1f} MiB: above the 50 MB "
-                        "direct upload quota, upload it through Amazon S3",
-                    )
-                )
+        findings = [
+            Finding(
+                "FP201",
+                Level.WARNING,
+                f"{artifact.kind} zip is {artifact.size / 2**20:.1f} MiB: above the 50 MB "
+                "direct upload quota, upload it through Amazon S3",
+            )
+            for artifact in artifacts
+            if artifact.size > DIRECT_UPLOAD_LIMIT
+        ]
         total = sum(a.unzipped_size for a in artifacts)
         if total > UNZIPPED_LIMIT:
             findings.append(
